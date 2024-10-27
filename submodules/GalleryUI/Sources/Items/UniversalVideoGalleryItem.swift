@@ -790,6 +790,7 @@ final class UniversalVideoGalleryItemNode: ZoomableContentGalleryItemNode {
     private var validLayout: (ContainerViewLayout, CGFloat)?
     private var didPause = false
     private var isPaused = true
+    private var wasPlaying = false
     private var dismissOnOrientationChange = false
     private var keepSoundOnDismiss = false
     private var hasPictureInPicture = false
@@ -1358,6 +1359,7 @@ final class UniversalVideoGalleryItemNode: ZoomableContentGalleryItemNode {
                             case .playing:
                                 isPaused = false
                                 isPlaying = true
+                                strongSelf.wasPlaying = true
                                 strongSelf.ignorePauseStatus = false
                             case let .buffering(_, whilePlaying, _, display):
                                 displayProgress = display
@@ -1453,7 +1455,7 @@ final class UniversalVideoGalleryItemNode: ZoomableContentGalleryItemNode {
                     if isAnimated || disablePlayerControls {
                         strongSelf.footerContentNode.content = .info
                     } else if isPaused && !strongSelf.ignorePauseStatus && strongSelf.isCentral == true {
-                        if hasStarted || strongSelf.didPause {
+                        if hasStarted || strongSelf.didPause || (item.content as? HLSVideoContent) != nil {
                             strongSelf.footerContentNode.content = .playback(paused: true, seekable: seekable)
                         } else if let fetchStatus = fetchStatus, !strongSelf.requiresDownload {
                             strongSelf.footerContentNode.content = .fetch(status: fetchStatus, seekable: seekable)
@@ -2298,13 +2300,17 @@ final class UniversalVideoGalleryItemNode: ZoomableContentGalleryItemNode {
         }
 
         if let item = self.item, let videoNode = self.videoNode, let overlayController = self.context.sharedContext.mediaManager.overlayMediaManager.controller {
-            videoNode.setContinuePlayingWithoutSoundOnLostAudioSession(false)
-
-            let context = self.context
-            let baseNavigationController = self.baseNavigationController()
-            let playbackRate = self.playbackRate
-
             if #available(iOSApplicationExtension 15.0, iOS 15.0, *), AVPictureInPictureController.isPictureInPictureSupported(), isNativePictureInPictureSupported {
+                if item.content is HLSVideoContent, !self.wasPlaying {
+                    return
+                }
+                
+                videoNode.setContinuePlayingWithoutSoundOnLostAudioSession(false)
+                
+                let context = self.context
+                let baseNavigationController = self.baseNavigationController()
+                let playbackRate = self.playbackRate
+                
                 self.disablePictureInPicturePlaceholder = true
 
                 let overlayVideoNode = UniversalVideoNode(accountId: self.context.account.id, postbox: self.context.account.postbox, audioSession: self.context.sharedContext.mediaManager.audioSession, manager: self.context.sharedContext.mediaManager.universalVideoManager, decoration: GalleryVideoDecoration(), content: item.content, priority: .overlay)
@@ -2370,6 +2376,8 @@ final class UniversalVideoGalleryItemNode: ZoomableContentGalleryItemNode {
 
                 self.context.sharedContext.mediaManager.overlayMediaManager.controller?.setPictureInPictureContent(content: content, absoluteRect: absoluteRect)
             } else {
+                videoNode.setContinuePlayingWithoutSoundOnLostAudioSession(false)
+                
                 let context = self.context
                 let baseNavigationController = self.baseNavigationController()
                 let mediaManager = self.context.sharedContext.mediaManager
